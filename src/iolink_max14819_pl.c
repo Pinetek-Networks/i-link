@@ -22,6 +22,9 @@
 #include "iolink_max14819_pl.h"
 #include "iolink_pl_hw_drv.h"
 #include "osal_log.h"
+#include "osal.h"
+
+#include <stdio.h>
 
 #ifdef __rtk__
 #include <gpio.h>
@@ -37,8 +40,8 @@
 
 void spi_transfer (
    int fd,
-   void * data_read,
-   const void * data_written,
+   uint8_t* data_read,
+   uint8_t* data_written,
    size_t n_bytes_to_transfer)
 {
    // TODO
@@ -46,14 +49,15 @@ void spi_transfer (
    int speed = 4 * 1000 * 1000;
    int bits  = 8;
 
-   struct spi_ioc_transfer tr = {
-      .tx_buf        = (unsigned long)data_written,
-      .rx_buf        = (unsigned long)data_read,
-      .len           = n_bytes_to_transfer,
-      .delay_usecs   = delay,
-      .speed_hz      = speed,
-      .bits_per_word = bits,
-   };
+   struct spi_ioc_transfer tr;
+		memset(&tr, 0, sizeof (tr));
+		
+		tr.tx_buf        = (unsigned long)data_written;
+		tr.rx_buf        = (unsigned long)data_read;
+		tr.len           = n_bytes_to_transfer;
+		tr.delay_usecs   = delay;
+		tr.speed_hz      = speed;
+		tr.bits_per_word = bits;
 
    if (ioctl (fd, SPI_IOC_MESSAGE (1), &tr) < 1)
    {
@@ -61,7 +65,7 @@ void spi_transfer (
    }
 }
 
-#define SPI_TRANSFER(fd, rbuf, wbuf, size) spi_transfer (fd, rbuf, wbuf, size);
+//#define SPI_TRANSFER(fd, rbuf, wbuf, size) spi_transfer (fd, rbuf, wbuf, size);
 #endif
 
 /**
@@ -195,7 +199,7 @@ static void iolink_14819_write_register (
              (iolink->chip_address << MAX14819_ADDR_OFFSET) |
              (reg << MAX14819_REGISTER_OFFSET);
    wbuf[1] = value;
-   SPI_TRANSFER (iolink->fd_spi, &rbuf, &wbuf, sizeof (wbuf));
+   spi_transfer (iolink->fd_spi, rbuf, wbuf, sizeof (wbuf));
 }
 
 static uint8_t iolink_14819_read_register (iolink_14819_drv_t * iolink, uint8_t reg)
@@ -209,7 +213,7 @@ static uint8_t iolink_14819_read_register (iolink_14819_drv_t * iolink, uint8_t 
              (iolink->chip_address << MAX14819_ADDR_OFFSET) |
              (reg << MAX14819_REGISTER_OFFSET);
    wbuf[1] = 0;
-   SPI_TRANSFER (iolink->fd_spi, &rbuf, &wbuf, sizeof (wbuf));
+   spi_transfer (iolink->fd_spi, rbuf, wbuf, sizeof (wbuf));
    /* Check SPI In-Band Device-Message-Ready */
    if (reg == REG_RxFIFOLvlA)
    {
@@ -240,7 +244,7 @@ static void iolink_14819_burst_write_tx (
                 (iolink->chip_address << MAX14819_ADDR_OFFSET) |
                 (rxtxreg << MAX14819_REGISTER_OFFSET);
    memcpy (&data_tx[1], data, size);
-   SPI_TRANSFER (iolink->fd_spi, data_rx, data_tx, size + 1);
+   spi_transfer (iolink->fd_spi, data_rx, data_tx, size + 1);
 
    for (idx = 0; idx < size; idx++)
    {
@@ -269,7 +273,7 @@ static uint8_t iolink_14819_burst_read_rx (
    txdata[0] = MAX14819_COMMAND_READ |
                (iolink->chip_address << MAX14819_ADDR_OFFSET) |
                (rxtxreg << MAX14819_REGISTER_OFFSET);
-   SPI_TRANSFER (iolink->fd_spi, rxdata, txdata, rxbytes + 2);
+   spi_transfer (iolink->fd_spi, rxdata, txdata, rxbytes + 2);
    memcpy (data, &rxdata[1], rxbytes);
 
    return rxdata[0];
@@ -1024,3 +1028,93 @@ void iolink_14819_isr (void * arg)
       iolink->pl_flag = 0xBADBAD;
    }
 }
+
+void setPower(int _fd, uint8_t _port, bool _power)
+{
+	iolink_14819_drv_t * iolink;
+	
+	iolink = (iolink_14819_drv_t *)fd_get_driver (_fd);
+	
+	if (_port > 1)
+		return;
+	
+	os_mutex_lock (iolink->exclusive);	 
+			 
+	uint8_t myLPCnfgAValue = 0x00;
+		
+	if (_power == true)
+		myLPCnfgAValue = 0x01;
+		
+	iolink_14819_write_register (iolink, REG_LPCnfgA+_port, myLPCnfgAValue);	
+	
+	os_mutex_unlock (iolink->exclusive);	 
+}
+
+
+
+void setLED(int _fd, uint8_t _port, bool _ledR, bool _ledG)
+{
+	iolink_14819_drv_t * iolink;
+	iolink = (iolink_14819_drv_t *)fd_get_driver (_fd);
+
+	if (_port > 1)
+		return;
+
+	os_mutex_lock (iolink->exclusive);	 
+	
+	uint8_t myLEDCtrlValue = iolink_14819_read_register (iolink, REG_LEDCtrl);
+	
+	uint8_t myCurrentLedValue = 0;
+	
+	if (_ledR)
+		myCurrentLedValue |= 0x02;
+		
+	if (_ledG)
+		myCurrentLedValue |= 0x08;
+	
+		
+	if (_port == 0)
+	{
+		myLEDCtrlValue &= 0xF5;
+		myLEDCtrlValue |= myCurrentLedValue;
+	}
+	
+	else
+	{
+		myLEDCtrlValue &= 0x5F;
+		myLEDCtrlValue |= (myCurrentLedValue << 4);
+	}
+		
+	iolink_14819_write_register (iolink, REG_LEDCtrl, myLEDCtrlValue);	
+	
+	os_mutex_unlock (iolink->exclusive);
+}
+
+void getStatus(int _fd, uint8_t _port, bool *_power, uint8_t *_baudrate)
+{
+	if (_port > 1)
+		return;
+		
+	iolink_14819_drv_t * iolink;
+	iolink = (iolink_14819_drv_t *)fd_get_driver (_fd);
+
+	
+	uint8_t myStatusRegister = iolink_14819_read_register (iolink, REG_LPCnfgA+_port);
+	uint8_t myBaudrateRegister = iolink_14819_read_register (iolink, REG_CQCtrlA+_port);
+	
+	*_baudrate = (myBaudrateRegister>>6) & 0x03;
+
+	
+	if (myStatusRegister & 0x01)
+	{
+		*_power = 1;
+	}
+	
+	else 
+	{
+		*_power = 0;
+	}
+	
+}
+
+

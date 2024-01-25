@@ -28,6 +28,7 @@
 #include "iolink_sm.h"  /* iolink_sm_init */
 
 #include "osal.h"
+#include "osal_log.h"
 
 #include <stdlib.h> /* calloc */
 

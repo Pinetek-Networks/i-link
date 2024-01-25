@@ -184,8 +184,10 @@ static inline bool get_isdu_total_len (iolink_dl_t * dl, uint8_t * isdu_total_le
    {
       len = dl->isdu_handler.isdu_data[1];
    }
+	 
+	 // According to tabel A.14 == 16 should be false. However, some devices seem to use it though. 
 
-   if ((len < 2) || (len == 16))
+   else if ((len < 2) || (len == 16))
    {
       return false;
    }
@@ -438,10 +440,10 @@ static inline void iolink_dl_mode_h_sm_goto_idle (
 
    set_OH_IH_EH_Conf_active (port, false);
    CH_Conf (port, IOL_CHCMD_INACTIVE);
-   MH_Conf (port, IOL_MHCMD_INACTIVE);
+	 MH_Conf (port, IOL_MHCMD_INACTIVE);
    dl->mode_handler.mhinfo = IOLINK_MHINFO_NONE;
    dl->mode_handler.state  = IOL_DL_MDH_ST_IDLE_0;
-   DL_Mode_ind (port, mode);
+	  DL_Mode_ind (port, mode);
 }
 
 static inline void iolink_dl_mode_h_sm_goto_startup (iolink_port_t * port)
@@ -449,9 +451,10 @@ static inline void iolink_dl_mode_h_sm_goto_startup (iolink_port_t * port)
    iolink_dl_t * dl = iolink_get_dl_ctx (port);
 
    set_OH_IH_EH_Conf_active (port, false);
-   MH_Conf (port, IOL_MHCMD_STARTUP);
-   dl->mode_handler.state = IOL_DL_MDH_ST_STARTUP_2;
+   MH_Conf (dl, IOL_MHCMD_STARTUP);
    DL_Mode_ind (port, IOLINK_MHMODE_STARTUP);
+   os_event_set (dl->event, IOLINK_DL_EVENT_MH);
+   dl->mode_handler.state = IOL_DL_MDH_ST_STARTUP_2;
 }
 
 static void iolink_dl_mode_h_sm (iolink_port_t * port)
@@ -499,7 +502,9 @@ static void iolink_dl_mode_h_sm (iolink_port_t * port)
       if (dl->mode_handler.dl_mode == IOLINK_DLMODE_PREOPERATE) // T3
       {
          set_OH_IH_EH_Conf_active (port, true);
-         MH_Conf (port, IOL_MHCMD_PREOPERATE);
+		 
+				 MH_Conf (port, IOL_MHCMD_PREOPERATE);
+				 				 
          dl->mode_handler.state = IOL_DL_MDH_ST_PREOPERATE_3;
          DL_Mode_ind (port, IOLINK_MHMODE_PREOPERATE);
       }
@@ -534,7 +539,8 @@ static void iolink_dl_mode_h_sm (iolink_port_t * port)
       }
       else if (dl->mode_handler.dl_mode == IOLINK_DLMODE_INACTIVE) // SDCI_TC_0214
       {
-         MH_Conf (port, IOL_MHCMD_OPERATE);
+         os_event_set (dl->event, IOLINK_DL_EVENT_MH);
+				  MH_Conf (port, IOL_MHCMD_OPERATE);
       }
       else if (dl->mode_handler.mhinfo == IOLINK_MHINFO_COMLOST) // T9
       {

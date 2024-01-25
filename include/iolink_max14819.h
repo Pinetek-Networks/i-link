@@ -75,6 +75,11 @@ int iolink_14819_init (const char * name, const iolink_14819_cfg_t * cfg);
  */
 void iolink_14819_isr (void * arg);
 
+
+void setPower(int _fd, uint8_t _port, bool _power);
+void setLED(int _fd, uint8_t _port, bool _ledR, bool _ledG);
+void getStatus(int _fd, uint8_t _port, bool *_power, uint8_t *_baudrate);
+
 #ifdef __cplusplus
 }
 #endif
